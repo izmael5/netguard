@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Scan #{{ scan.id }} — NetGuard{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <div class="scan-head">
+    <div>
+      <h2>Scan #{{ scan.id }} <span class="mono muted">{{ scan.target }}</span></h2>
+      <p class="muted">{{ scan.scan_type }} · ports {{ scan.port_range }} · started {{ scan.started_at }}</p>
+    </div>
+    <div class="scan-actions">
+      <span id="status-badge" class="badge badge-{{ scan.status }}">{{ scan.status }}</span>
+      <button id="report-btn" class="btn-secondary" {% if scan.status != 'completed' %}disabled{% endif %}>
+        Generate report
+      </button>
+    </div>
+  </div>
+  {% if scan.error_message %}<p class="error">{{ scan.error_message }}</p>{% endif %}
+  <p id="report-link"></p>
+</section>
+
+<section class="panel">
+  <h3>Open ports &amp; services</h3>
+  <table class="data-table">
+    <thead><tr><th>Port</th><th>Proto</th><th>Service</th><th>Product</th><th>Version</th></tr></thead>
+    <tbody>
+      {% for p in ports %}
+      <tr>
+        <td class="mono">{{ p.port }}</td>
+        <td>{{ p.protocol }}</td>
+        <td>{{ p.service_name }}</td>
+        <td>{{ p.product }}</td>
+        <td>{{ p.version }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">No open ports found yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h3>Matched CVEs</h3>
+  <table class="data-table">
+    <thead><tr><th>CVE</th><th>Severity</th><th>CVSS</th><th>Description</th></tr></thead>
+    <tbody>
+      {% for v in vulns %}
+      <tr>
+        <td class="mono">{% if v.reference_url %}<a href="{{ v.reference_url }}" target="_blank">{{ v.cve_id }}</a>{% else %}{{ v.cve_id or '—' }}{% endif %}</td>
+        <td><span class="badge sev-{{ v.severity|lower }}">{{ v.severity }}</span></td>
+        <td class="mono">{{ v.cvss_score or '—' }}</td>
+        <td class="wrap">{{ v.description }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No CVE matches yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h3>Web / HTTP findings</h3>
+  <table class="data-table">
+    <thead><tr><th>Category</th><th>Finding</th><th>Severity</th><th>Detail</th></tr></thead>
+    <tbody>
+      {% for f in web_findings %}
+      <tr>
+        <td>{{ f.category }}</td>
+        <td>{{ f.finding }}</td>
+        <td><span class="badge sev-{{ f.severity|lower }}">{{ f.severity }}</span></td>
+        <td class="wrap">{{ f.detail }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No web findings yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const scanId = {{ scan.id }};
+const statusBadge = document.getElementById('status-badge');
+const reportBtn = document.getElementById('report-btn');
+
+async function poll() {
+  const resp = await fetch('/api/scan/' + scanId);
+  const data = await resp.json();
+  statusBadge.textContent = data.status;
+  statusBadge.className = 'badge badge-' + data.status;
+  if (data.status === 'completed' || data.status === 'failed') {
+    reportBtn.disabled = data.status !== 'completed';
+    if (data.status === 'completed') location.reload();
+    return;
+  }
+  setTimeout(poll, 3000);
+}
+if (statusBadge.textContent.trim() !== 'completed') poll();
+
+reportBtn.addEventListener('click', async () => {
+  reportBtn.disabled = true;
+  reportBtn.textContent = 'Generating...';
+  const resp = await fetch('/report/' + scanId, { method: 'POST' });
+  const data = await resp.json();
+  if (data.download_url) {
+    document.getElementById('report-link').innerHTML =
+      '<a class="btn-primary" href="' + data.download_url + '">Download report →</a>';
+  }
+  reportBtn.textContent = 'Generate report';
+  reportBtn.disabled = false;
+});
+</script>
+{% endblock %}

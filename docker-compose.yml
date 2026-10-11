@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  db:
+    image: mysql:8.4
+    container_name: netguard_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_change_me}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-netguard}
+      MYSQL_USER: ${MYSQL_USER:-netguard}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-netguard_pw}
+    volumes:
+      - netguard_db_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_change_me}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    container_name: netguard_web
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-netguard}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-netguard_pw}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-netguard}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-.env}
+      NVD_API_KEY: ${NVD_API_KEY:-}
+      ALLOWED_TARGETS: ${ALLOWED_TARGETS:-127.0.0.1,localhost}
+      DEFAULT_PORT_RANGE: ${DEFAULT_PORT_RANGE:-1-1024}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./reports:/app/reports
+    # NET_RAW/NET_ADMIN let nmap do SYN scans for faster, more accurate
+    # results; remove this if you'd rather run fully unprivileged (the
+    # scanner falls back to TCP-connect scanning either way).
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+volumes:
+  netguard_db_data:

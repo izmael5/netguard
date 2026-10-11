@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}NetGuard — Dashboard{% endblock %}
+{% block content %}
+
+<section class="panel grid-2">
+  <div class="card">
+    <h2>Run a scan</h2>
+    <p class="muted">Target must already be on your allow-list below.</p>
+    <form id="scan-form" class="stack">
+      <label>Target
+        <input type="text" name="target" placeholder="e.g. 192.168.1.10 or example.com" required list="target-list">
+        <datalist id="target-list">
+          {% for t in targets %}<option value="{{ t.target }}">{% endfor %}
+        </datalist>
+      </label>
+      <label>Scan type
+        <select name="scan_type">
+          <option value="full">Full (ports + web)</option>
+          <option value="port">Port &amp; service scan</option>
+          <option value="web">Web / HTTP checks</option>
+        </select>
+      </label>
+      <label>Port range
+        <input type="text" name="port_range" value="1-1024">
+      </label>
+      <button type="submit" class="btn-primary">Start scan</button>
+      <p id="scan-feedback" class="muted"></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Allowed targets</h2>
+    <p class="muted">Only systems you own or have written permission to test.</p>
+    <form id="target-form" class="inline-form">
+      <input type="text" name="target" placeholder="host / IP / CIDR / URL" required>
+      <input type="text" name="label" placeholder="label (optional)">
+      <select name="target_type">
+        <option value="host">host</option>
+        <option value="cidr">cidr</option>
+        <option value="url">url</option>
+      </select>
+      <button type="submit" class="btn-secondary">Add</button>
+    </form>
+    <ul class="target-list">
+      {% for t in targets %}
+      <li><span class="mono">{{ t.target }}</span> <span class="muted">{{ t.label or '' }}</span></li>
+      {% else %}
+      <li class="muted">No targets yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Recent scans</h2>
+  <table class="data-table">
+    <thead>
+      <tr><th>ID</th><th>Target</th><th>Type</th><th>Status</th><th>Started</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in scans %}
+      <tr>
+        <td class="mono">{{ s.id }}</td>
+        <td class="mono">{{ s.target }}</td>
+        <td>{{ s.scan_type }}</td>
+        <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
+        <td class="muted">{{ s.started_at }}</td>
+        <td><a href="/scan/{{ s.id }}">view →</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No scans yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('scan-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const feedback = document.getElementById('scan-feedback');
+  feedback.textContent = 'Starting...';
+  const resp = await fetch('/scan', { method: 'POST', body: fd });
+  const data = await resp.json();
+  if (!resp.ok) { feedback.textContent = 'Error: ' + data.error; return; }
+  feedback.textContent = 'Scan #' + data.scan_id + ' queued.';
+  setTimeout(() => { window.location.href = '/scan/' + data.scan_id; }, 800);
+});
+
+document.getElementById('target-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  await fetch('/targets', { method: 'POST', body: fd });
+  window.location.reload();
+});
+</script>
+{% endblock %}
